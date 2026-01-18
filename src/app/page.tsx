@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Activity, Shield, Cpu, Upload } from 'lucide-react';
+import { Activity, Shield, Cpu, Upload, HeartPulse } from 'lucide-react';
 
 export default function Home() {
   return (
@@ -8,7 +8,7 @@ export default function Home() {
       <nav className="border-b border-slate-800 bg-slate-950/50 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Shield className="w-8 h-8 text-indigo-500" />
+            <HeartPulse className="w-8 h-8 text-indigo-500 animate-pulse" />
             <span className="text-xl font-bold tracking-tight">HealthSec</span>
           </div>
           <div className="flex gap-4">
