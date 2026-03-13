@@ -1,15 +1,23 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
-import { Cpu, Play, Square, Terminal as TerminalIcon, Activity, Sparkles, ChevronDown, User, Search, Loader2 } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Cpu, Play, Square, Terminal as TerminalIcon, Activity, Sparkles, ChevronDown, User, Search, Loader2, CheckCircle2, ArrowRight } from 'lucide-react';
 import { ModelType } from '@/lib/ml/MLManager';
 import { supabase } from '@/lib/supabase/client';
 
 export default function TrainPage() {
+    const router = useRouter();
+    const searchParams = useSearchParams();
     const [isTraining, setIsTraining] = useState(false);
     const [selectedModel, setSelectedModel] = useState<ModelType | string>('risk_tabular');
     const [logs, setLogs] = useState<string[]>([]);
     const [showLogs, setShowLogs] = useState(false);
+    const [diagnosticResults, setDiagnosticResults] = useState<any[] | null>(null);
+    const [epochs, setEpochs] = useState(10);
+    const [lr, setLr] = useState(0.001);
+    const [selectedVersion, setSelectedVersion] = useState('latest');
+    const [versions, setVersions] = useState<string[]>(['latest', '20260203_v1', '20260128_beta']);
 
     // Patient Selection State
     const [patients, setPatients] = useState<any[]>([]);
@@ -20,8 +28,12 @@ export default function TrainPage() {
     const scrollRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
+        const pId = searchParams.get('patient_id');
+        if (pId) {
+            setSelectedPatientId(pId);
+        }
         fetchPatients();
-    }, []);
+    }, [searchParams]);
 
     const fetchPatients = async () => {
         try {
@@ -41,9 +53,25 @@ export default function TrainPage() {
         }
     }, [logs, showLogs]);
 
+    useEffect(() => {
+        const fetchVersions = async () => {
+            try {
+                const response = await fetch(`${process.env.NEXT_PUBLIC_ML_SERVICE_URL || 'http://localhost:8000'}/weights/versions/${selectedModel}`);
+                const result = await response.json();
+                if (result.status === 'success') {
+                    setVersions(['latest', ...result.versions]);
+                }
+            } catch (error) {
+                console.error("Error fetching versions:", error);
+            }
+        };
+        fetchVersions();
+    }, [selectedModel]);
+
     const startTraining = async () => {
         setIsTraining(true);
         setShowLogs(true);
+        setDiagnosticResults(null);
         setLogs([`[INFO] Connecting to HealthSec ML Service...`]);
 
         try {
@@ -52,23 +80,100 @@ export default function TrainPage() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     patient_id: selectedPatientId || null,
-                    data: null // Future: Pass specific subset of data
+                    data: null,
+                    epochs,
+                    lr
                 })
             });
 
             const result = await response.json();
 
-            if (result.status === 'success') {
+            if (result.status === 'success' && result.logs && Array.isArray(result.logs)) {
+                // PERSIST: Save to Supabase
+                await supabase.from('predictions').insert([{
+                    patient_uuid: selectedPatientId,
+                    model_type: selectedModel,
+                    risk_score: parseFloat(result.final_accuracy) / 100,
+                    status: 'OPTIMIZED',
+                    timestamp: new Date().toISOString()
+                }]);
+
+                setDiagnosticResults([{
+                    model: selectedModel,
+                    accuracy: result.final_accuracy,
+                    status: 'OPTIMIZED'
+                }]);
                 // Stream logs slowly for visual effect if they come back at once
                 for (const log of result.logs) {
                     setLogs(prev => [...prev, log]);
                     await new Promise(r => setTimeout(r, 500));
                 }
             } else {
-                setLogs(prev => [...prev, `[ERROR] ${result.detail || 'Training failed'}`]);
+                const errorMsg = result.detail || result.message || 'Training failed - invalid response format';
+                setLogs(prev => [...prev, `[ERROR] ${errorMsg}`]);
+                console.error('Training error:', result);
             }
         } catch (error: any) {
             setLogs(prev => [...prev, `[CRITICAL] Service unreachable: ${error.message}`]);
+            console.error('Training exception:', error);
+        } finally {
+            setIsTraining(false);
+        }
+    };
+
+    const startBulkTraining = async () => {
+        setIsTraining(true);
+        setShowLogs(true);
+        setDiagnosticResults(null);
+        setLogs([`[INFO] Launching Unified Multi-Modal Diagnostic Suite...`]);
+
+        try {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_ML_SERVICE_URL || 'http://localhost:8000'}/train/all`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    patient_id: selectedPatientId || null
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.status === 'success' && result.results && Array.isArray(result.results)) {
+                // PERSIST: Save all to Supabase
+                const inserts = result.results.map((r: any) => ({
+                    patient_uuid: selectedPatientId,
+                    model_type: r.model,
+                    risk_score: parseFloat(r.accuracy) / 100,
+                    status: 'OPTIMIZED',
+                    timestamp: new Date().toISOString()
+                }));
+                await supabase.from('predictions').insert(inserts);
+
+                setDiagnosticResults(result.results);
+
+                // Stream logs if available
+                if (result.logs && Array.isArray(result.logs)) {
+                    for (const log of result.logs) {
+                        setLogs(prev => [...prev, log]);
+                        // Faster stream for bulk
+                        await new Promise(r => setTimeout(r, 200));
+                    }
+                }
+
+                // Navigate to patient profile after completion
+                if (selectedPatientId) {
+                    setLogs(prev => [...prev, `[SUCCESS] Redirecting to patient profile...`]);
+                    await new Promise(r => setTimeout(r, 1500)); // Show success message briefly
+                    router.push(`/dashboard/patients/${selectedPatientId}?tab=reports&refresh=true`);
+                }
+            } else {
+                const errorMsg = result.detail || result.message || 'Bulk optimization failed - invalid response format';
+                setLogs(prev => [...prev, `[ERROR] ${errorMsg}`]);
+                console.error('Bulk training error:', result);
+            }
+        } catch (error: any) {
+            setLogs(prev => [...prev, `[CRITICAL] Service unreachable: ${error.message}`]);
+            console.error('Bulk training exception:', error);
         } finally {
             setIsTraining(false);
         }
@@ -88,6 +193,14 @@ export default function TrainPage() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-4">
+                    <button
+                        onClick={startBulkTraining}
+                        disabled={!selectedPatientId || isTraining}
+                        className="flex items-center gap-2 px-6 py-3 bg-emerald-600/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-600/20 disabled:opacity-50 rounded-xl font-bold transition-all active:scale-95 whitespace-nowrap"
+                    >
+                        <Sparkles className="w-4 h-4" /> Run Full Diagnostic Suite
+                    </button>
+
                     <div className="relative group">
                         <select
                             value={selectedModel}
@@ -147,8 +260,8 @@ export default function TrainPage() {
                                 key={p.id}
                                 onClick={() => setSelectedPatientId(p.id)}
                                 className={`w-full text-left p-4 rounded-2xl transition-all border ${selectedPatientId === p.id
-                                        ? 'bg-indigo-600/10 border-indigo-500/30 text-indigo-100 shadow-lg'
-                                        : 'bg-slate-950 border-slate-800/50 text-slate-400 hover:border-slate-700'
+                                    ? 'bg-indigo-600/10 border-indigo-500/30 text-indigo-100 shadow-lg'
+                                    : 'bg-slate-950 border-slate-800/50 text-slate-400 hover:border-slate-700'
                                     }`}
                             >
                                 <p className="font-bold text-sm line-clamp-1">{p.name}</p>
@@ -184,6 +297,41 @@ export default function TrainPage() {
                             </button>
                         </div>
 
+                        {/* Config Controls */}
+                        {!isTraining && (
+                            <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-top-4 duration-500">
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase flex justify-between">
+                                        Optimization Epochs <span>{epochs}</span>
+                                    </label>
+                                    <input
+                                        type="range" min="1" max="50" step="1"
+                                        value={epochs} onChange={(e) => setEpochs(parseInt(e.target.value))}
+                                        className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                                    />
+                                </div>
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase flex justify-between">
+                                        Learning Rate <span>{lr}</span>
+                                    </label>
+                                    <input
+                                        type="range" min="0.0001" max="0.01" step="0.0001"
+                                        value={lr} onChange={(e) => setLr(parseFloat(e.target.value))}
+                                        className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-violet-500"
+                                    />
+                                </div>
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase">Weight Versioning</label>
+                                    <select
+                                        value={selectedVersion} onChange={(e) => setSelectedVersion(e.target.value)}
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-xs text-white outline-none focus:border-indigo-500 transition-all font-mono"
+                                    >
+                                        {versions.map(v => <option key={v} value={v}>{v}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                        )}
+
                         {/* Collapsible Logs */}
                         <div className={`transition-all duration-500 ease-in-out overflow-hidden ${showLogs ? 'max-h-[500px] mt-8 opacity-100' : 'max-h-0 opacity-0'}`}>
                             <div className="bg-slate-950/80 border border-slate-800/50 rounded-2xl p-6 h-[400px] flex flex-col shadow-inner backdrop-blur-xl">
@@ -209,6 +357,49 @@ export default function TrainPage() {
                             </div>
                         </div>
                     </div>
+
+                    {/* NEW: Diagnostic Result Summary Card */}
+                    {diagnosticResults && !isTraining && (
+                        <div className="p-8 bg-indigo-600/10 border border-indigo-500/20 rounded-[2.5rem] animate-in zoom-in-95 duration-500">
+                            <div className="flex items-center justify-between mb-6">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-indigo-600 rounded-xl">
+                                        <CheckCircle2 className="w-5 h-5 text-white" />
+                                    </div>
+                                    <h3 className="text-xl font-bold text-indigo-100">Diagnostic Suite Report</h3>
+                                </div>
+                                <button
+                                    onClick={() => window.location.href = '/dashboard/analysis'}
+                                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-indigo-600/20"
+                                >
+                                    View Detailed Insights
+                                    <ArrowRight className="w-3.5 h-3.5" />
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {diagnosticResults.map((res, i) => (
+                                    <div key={i} className="p-4 bg-slate-900/50 border border-slate-800 rounded-2xl flex items-center justify-between group hover:border-indigo-500/30 transition-all">
+                                        <div>
+                                            <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">{res.model.replace('_', ' ')}</p>
+                                            <p className="text-lg font-bold text-indigo-300">{res.accuracy}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="text-[9px] font-bold text-emerald-400 bg-emerald-400/5 px-2 py-1 rounded-lg border border-emerald-400/10 uppercase">
+                                                Optimized
+                                            </span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="mt-6 p-4 bg-indigo-500/5 border border-indigo-500/10 rounded-2xl">
+                                <p className="text-xs text-indigo-200/70 leading-relaxed italic">
+                                    "Training phase successfully merged into Global Brain. Personalized weights for Patient {patients.find(p => p.id === selectedPatientId)?.patient_id} are now active across the network."
+                                </p>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Quick Stats Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

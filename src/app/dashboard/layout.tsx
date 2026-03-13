@@ -23,13 +23,14 @@ import {
 import { supabase } from '@/lib/supabase/client';
 
 const sidebarItems = [
-    { name: 'Clinical Overview', icon: LayoutDashboard, href: '/dashboard' },
-    { name: 'Patient Directory', icon: Users, href: '/dashboard/patients' },
-    { name: 'Nurse Portal (Logs)', icon: Stethoscope, href: '/dashboard/nurse' },
-    { name: 'Patient Intake / EHR Upload', icon: Upload, href: '/dashboard/input' },
-    { name: 'AI Model Configuration', icon: Cpu, href: '/dashboard/train' },
-    { name: 'Clinical Analytics & Risk Trends', icon: BarChart3, href: '/dashboard/analysis' },
-    { name: 'Discharge Summary / Risk Report', icon: FileText, href: '/dashboard/report' },
+    { name: 'Overview', icon: LayoutDashboard, href: '/dashboard' },
+    { name: 'Patients', icon: Users, href: '/dashboard/patients' },
+    { name: 'Nurse Portal', icon: Stethoscope, href: '/dashboard/nurse' },
+    { name: 'Intake', icon: Upload, href: '/dashboard/input' },
+    { name: 'Model Config', icon: Cpu, href: '/dashboard/train' },
+    { name: 'ML Center', icon: HeartPulse, href: '/dashboard/ml-center' },
+    { name: 'Analytics', icon: BarChart3, href: '/dashboard/analysis' },
+    { name: 'Reports', icon: FileText, href: '/dashboard/report' },
 ];
 
 export default function DashboardLayout({
@@ -137,6 +138,16 @@ export default function DashboardLayout({
         }
     };
 
+    const handleLogout = async () => {
+        try {
+            const { error } = await supabase.auth.signOut();
+            if (error) throw error;
+            window.location.href = '/'; // Redirect to login/home
+        } catch (error) {
+            console.error("Logout error:", error);
+        }
+    };
+
     return (
         <div className="flex min-h-screen bg-slate-950 text-slate-50">
             {/* Sidebar Overlay (Mobile) */}
@@ -190,7 +201,10 @@ export default function DashboardLayout({
                 </nav>
 
                 <div className="p-4 mt-auto border-t border-slate-800">
-                    <button className="flex items-center gap-3 px-4 py-3 w-full text-slate-400 hover:text-red-400 transition-colors group">
+                    <button
+                        onClick={handleLogout}
+                        className="flex items-center gap-3 px-4 py-3 w-full text-slate-400 hover:text-red-400 transition-colors group"
+                    >
                         <LogOut className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                         <span className="font-medium">Log Out</span>
                     </button>

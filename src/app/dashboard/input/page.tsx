@@ -58,6 +58,61 @@ export default function InputDataPage() {
         notes: ''
     });
 
+    const handleBulkImport = async () => {
+        if (!file) return;
+        setSubmitting(true);
+
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            const text = e.target?.result as string;
+            if (!text) return;
+
+            const rows = text.split('\n').filter(r => r.trim() !== '');
+            // Assume header is row 0: "patient_id","name","age","gender","zip_code","ethnicity","admission_type"
+
+            const patientsToInsert = [];
+
+            // Start from index 1 to skip header
+            for (let i = 1; i < rows.length; i++) {
+                try {
+                    // Remove quotes and split
+                    const cols = rows[i].split(',').map(c => c.replace(/^"|"$/g, '').trim());
+
+                    if (cols.length < 4) continue;
+
+                    patientsToInsert.push({
+                        patient_id: cols[0],
+                        name: cols[1],
+                        age: parseInt(cols[2]) || 0,
+                        gender: cols[3],
+                        bed_number: '',
+                        status: 'Active'
+                    });
+                } catch (err) {
+                    console.error("Row parse error:", err);
+                }
+            }
+
+            try {
+                const { error } = await supabase
+                    .from('patients')
+                    .insert(patientsToInsert);
+
+                if (error) throw error;
+
+                alert(`Successfully imported ${patientsToInsert.length} patients.`);
+                setFile(null);
+                setActiveTab('manual');
+            } catch (error: any) {
+                alert(`Import failed: ${error.message}`);
+            } finally {
+                setSubmitting(false);
+            }
+        };
+
+        reader.readAsText(file);
+    };
+
     const handleManualSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setSubmitting(true);
@@ -336,8 +391,12 @@ export default function InputDataPage() {
                                 </div>
                                 <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                             </div>
-                            <button className="w-full mt-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg font-semibold text-xs transition-all shadow-lg shadow-indigo-600/20 active:scale-95">
-                                Process Bulk Import
+                            <button
+                                onClick={handleBulkImport}
+                                disabled={submitting}
+                                className="w-full mt-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg font-semibold text-xs transition-all shadow-lg shadow-indigo-600/20 active:scale-95 disabled:opacity-50"
+                            >
+                                {submitting ? 'Processing...' : 'Process Bulk Import'}
                             </button>
                         </div>
                     )}

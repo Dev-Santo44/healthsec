@@ -48,8 +48,9 @@ CREATE TABLE IF NOT EXISTS notes (
 CREATE TABLE IF NOT EXISTS predictions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     patient_uuid UUID REFERENCES patients(id) ON DELETE CASCADE,
-    model_type VARCHAR(50) CHECK (model_type IN ('risk_tabular', 'risk_vitals', 'imaging', 'nlp', 'outcome')),
+    model_type VARCHAR(50) CHECK (model_type IN ('risk_tabular', 'risk_vitals', 'imaging', 'nlp', 'outcome', 'risk_fusion', 'lab_blood', 'lab_metabolic')),
     risk_score DECIMAL(5,4), -- 0.0000 to 1.0000
+    status VARCHAR(50), -- e.g. 'OPTIMIZED', 'INITIAL'
     details JSONB, -- Additional model-specific data
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -65,6 +66,7 @@ SELECT
     p.bed_number,
     COALESCE(MAX(CASE WHEN pr.model_type = 'risk_tabular' THEN pr.risk_score END), 0) as tabular_risk,
     COALESCE(MAX(CASE WHEN pr.model_type = 'nlp' THEN pr.risk_score END), 0) as nlp_risk,
+    COALESCE(MAX(CASE WHEN pr.model_type = 'risk_fusion' THEN pr.risk_score END), 0) as fusion_risk,
     COALESCE(AVG(pr.risk_score), 0) as avg_risk
 FROM patients p
 LEFT JOIN predictions pr ON p.id = pr.patient_uuid

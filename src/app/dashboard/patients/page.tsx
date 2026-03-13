@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { Search, Filter, ArrowUpRight, Shield, AlertTriangle, CheckCircle2, User, Calendar, Loader2 } from 'lucide-react';
+import { Search, Filter, ArrowUpRight, Shield, AlertTriangle, CheckCircle2, User, Calendar, Loader2, Trash2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import Link from 'next/link';
 
@@ -27,6 +27,27 @@ export default function PatientListPage() {
             console.error("Error fetching patients:", error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleDelete = async (id: string, name: string) => {
+        if (!confirm(`Are you sure you want to delete patient ${name}? This action cannot be undone.`)) return;
+
+        try {
+            // Check for dependent records first if your logic requires it, 
+            // but for now we assume cascade or direct deletion is okay
+            const { error } = await supabase
+                .from('patients')
+                .delete()
+                .eq('id', id);
+
+            if (error) throw error;
+
+            // Optimistic update
+            setPatients(patients.filter(p => p.id !== id));
+            alert(`Patient ${name} deleted successfully.`);
+        } catch (error: any) {
+            alert(`Error deleting patient: ${error.message}`);
         }
     };
 
@@ -118,12 +139,21 @@ export default function PatientListPage() {
                                                 </span>
                                             </td>
                                             <td className="px-4 md:px-5 py-3 text-right">
-                                                <Link
-                                                    href={`/dashboard/patients/${patient.id}`}
-                                                    className="inline-flex p-1.5 text-slate-500 hover:text-white hover:bg-indigo-600 rounded-lg transition-all"
-                                                >
-                                                    <ArrowUpRight className="w-3.5 h-3.5" />
-                                                </Link>
+                                                <div className="flex justify-end gap-2">
+                                                    <button
+                                                        onClick={() => handleDelete(patient.id, patient.name)}
+                                                        className="inline-flex p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
+                                                        title="Delete Patient"
+                                                    >
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <Link
+                                                        href={`/dashboard/patients/${patient.id}`}
+                                                        className="inline-flex p-1.5 text-slate-500 hover:text-white hover:bg-indigo-600 rounded-lg transition-all"
+                                                    >
+                                                        <ArrowUpRight className="w-3.5 h-3.5" />
+                                                    </Link>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))

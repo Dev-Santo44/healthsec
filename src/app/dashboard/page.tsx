@@ -181,18 +181,22 @@ export default function DashboardPage() {
                         </h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
                             {[
-                                { title: "Imaging Backlog", val: "0 Pending", icon: Cpu, color: "text-indigo-400" },
-                                { title: "NLP Proc Engine", val: "Active", icon: FileText, color: "text-violet-400" },
-                                { title: "Secure Edge nodes", val: "4 Synchronized", icon: Shield, color: "text-emerald-400" },
-                                { title: "System Latency", val: "< 12ms", icon: Activity, color: "text-amber-400" }
+                                { title: "Imaging Backlog", val: "0 Pending", icon: Cpu, color: "text-indigo-400", href: "/dashboard/analysis" },
+                                { title: "NLP Proc Engine", val: "Active", icon: FileText, color: "text-violet-400", href: "/dashboard/ml-center" },
+                                { title: "Secure Edge nodes", val: "4 Synchronized", icon: Shield, color: "text-emerald-400", href: "/dashboard" },
+                                { title: "System Latency", val: "< 12ms", icon: Activity, color: "text-amber-400", href: "/dashboard/analysis" }
                             ].map((item, i) => (
-                                <div key={i} className="p-3 bg-slate-950/50 border border-slate-800/50 rounded-xl flex items-center justify-between">
+                                <Link
+                                    key={i}
+                                    href={item.href}
+                                    className="p-3 bg-slate-950/50 border border-slate-800/50 rounded-xl flex items-center justify-between hover:bg-slate-900 transition-colors group"
+                                >
                                     <div className="flex items-center gap-3">
-                                        <item.icon className={`w-4 h-4 ${item.color}`} />
+                                        <item.icon className={`w-4 h-4 ${item.color} group-hover:scale-110 transition-transform`} />
                                         <span className="text-xs font-bold text-slate-300">{item.title}</span>
                                     </div>
                                     <span className="text-xs font-mono font-bold text-slate-500">{item.val}</span>
-                                </div>
+                                </Link>
                             ))}
                         </div>
                     </div>
